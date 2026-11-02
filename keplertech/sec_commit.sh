@@ -20,7 +20,10 @@
 #   KEPLER_FORMAL   kepler-formal executable (default: kepler-formal on PATH)
 #   PYTHON          Python interpreter with keplertech/requirements.txt installed
 #                   (default: python3)
-#   RESET_PORT      top-level reset port and active value (default: arst_i=1)
+#   RESET_PORTS     space-separated <port>=<active value> pairs held at their
+#                   active value during the reset bootstrap and at the opposite
+#                   value afterwards (default: "arst_i=1"). Adding cke_i=0 keeps
+#                   the clock enable on after reset.
 #   RESET_CYCLES    reset bootstrap cycles (default: 4)
 #
 # Exit code: the kepler-formal SEC exit code
@@ -29,7 +32,7 @@
 set -euo pipefail
 
 if [ $# -lt 2 ]; then
-    sed -n '9,27p' "$0"
+    sed -n '9,30p' "$0"
     exit 64
 fi
 
@@ -39,8 +42,12 @@ ENGINE=${3:-pdr}
 MAX_K=${4:-32}
 KEPLER_FORMAL=${KEPLER_FORMAL:-kepler-formal}
 PYTHON=${PYTHON:-python3}
-RESET_PORT=${RESET_PORT:-arst_i=1}
+RESET_PORTS=${RESET_PORTS:-arst_i=1}
 RESET_CYCLES=${RESET_CYCLES:-4}
+RESET_ARGS=()
+for p in $RESET_PORTS; do
+    RESET_ARGS+=(--sec-reset-port "$p")
+done
 
 REPO=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 SHORT=$(git -C "$REPO" rev-parse --short "$COMMIT")
@@ -107,7 +114,7 @@ set +e
 cd "$WORK"
 "$KEPLER_FORMAL" -sv -v sec \
     --sec-engine "$ENGINE" --sec-encoding binary -k "$MAX_K" \
-    --sec-reset-cycles "$RESET_CYCLES" --sec-reset-port "$RESET_PORT" \
+    --sec-reset-cycles "$RESET_CYCLES" "${RESET_ARGS[@]}" \
     --sv_design1_top "$CORE" --sv_design2_top "$CORE" \
     --design1 "$SRC1"/*.v \
     --design2 "$SRC2"/*.v \

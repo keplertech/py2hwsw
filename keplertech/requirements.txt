@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 keplertech.io
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Python packages py2hwsw needs to run "py2hwsw <core> setup" outside nix-shell.
+# Same list as pythonEnv in py2hwsw/lib/default.nix.
+black
+mypy
+parse
+numpy
+wavedrom
+matplotlib
+scipy
+pyserial
+pydantic
+jinja2

@@ -102,6 +102,9 @@ fi
 echo "   generated sources differ in: $(diff -rq "$SRC1" "$SRC2" | sed -E 's|.*/([^/ ]+) and .*|\1|' | sort -u | tr '\n' ' ')"
 
 set +e
+# kepler-formal writes working files (miter logs, frontend diagnostics) to the
+# current directory, so it runs from the work directory.
+cd "$WORK"
 "$KEPLER_FORMAL" -sv -v sec \
     --sec-engine "$ENGINE" --sec-encoding binary -k "$MAX_K" \
     --sec-reset-cycles "$RESET_CYCLES" --sec-reset-port "$RESET_PORT" \

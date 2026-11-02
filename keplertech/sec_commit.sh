@@ -47,6 +47,17 @@ SHORT=$(git -C "$REPO" rev-parse --short "$COMMIT")
 WORK=$REPO/keplertech/work/${CORE}_${SHORT}
 mkdir -p "$WORK"
 
+# py2hwsw setup formats the generated Verilog with verible-verilog-format and
+# fails if it is missing, after all sources are generated. Formatting does not
+# change the RTL, so without verible a no-op formatter is put on PATH.
+if ! command -v verible-verilog-format >/dev/null 2>&1; then
+    SHIM=$REPO/keplertech/work/bin
+    mkdir -p "$SHIM"
+    printf '#!/bin/sh\nexit 0\n' >"$SHIM/verible-verilog-format"
+    chmod +x "$SHIM/verible-verilog-format"
+    export PATH="$SHIM:$PATH"
+fi
+
 generate() {
     # $1 = revision, $2 = side name (design1 or design2)
     local rev=$1 side=$2

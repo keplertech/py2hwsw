@@ -99,7 +99,9 @@ python3 -m venv .venv
 export PYTHON=$PWD/.venv/bin/python
 ```
 
-`verible` is not needed: without it, generation only skips code formatting.
+`verible` is not needed. When `verible-verilog-format` is not installed,
+`sec_commit.sh` puts a no-op formatter on `PATH`, so generation only skips code
+formatting, which does not change the RTL.
 
 ### Repository history
 

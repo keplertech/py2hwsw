@@ -39,8 +39,12 @@ For each commit `C`, `sec_commit.sh`:
 1. creates two git worktrees, one at `C^` (design 1) and one at `C` (design 2);
 2. runs `py2hwsw iob_axi2iob setup --no_verilog_lint` with each worktree's own
    py2hwsw, so each side uses the framework and the generated submodules
-   (`iob_reg`, `iob_reg_r`, `iob_reg_re`) of its own commit;
-3. runs kepler-formal RTL SEC between the two generated `hardware/src` trees.
+   (`iob_reg`, `iob_reg_r`, `iob_reg_re`) of its own commit. Setup runs from a
+   directory that holds only that side's output, because py2hwsw also looks up
+   cores under the current directory;
+3. stops if the two generated trees are identical, since the comparison would
+   then be trivial, and otherwise lists the files that differ;
+4. runs kepler-formal RTL SEC between the two generated `hardware/src` trees.
 
 Settings:
 

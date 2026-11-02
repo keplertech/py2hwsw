@@ -23,14 +23,29 @@ history to generate each version of the core.
 | Commit | Change | Intended effect | Verdict | Checked outputs | Proof time |
 | --- | --- | --- | --- | --- | --- |
 | e0434c789 (2025-01-17) | Quartus warning cleanup: adds `AXI_LEN_WIDTH`, removes unused `*prot` wires | Behavior unchanged | **Proved equivalent** (default parameters) | 127/127 | 23 s |
-| 2d734efb2 (2024-12-20) | Fix of the rvalid/rdata register enables | Behavior change | **Counterexample**: `s_axi_arready_o` differs at cycle 8 | 127/127 | 2 s |
+| 2d734efb2 (2024-12-20) | Fix of the rvalid/rdata register enables | Behavior change | **Counterexample**: at cycle 8 after reset, the version before the fix presents a read response again without new IOb data | 127/127 | 2 s |
 
 Proof times exclude py2hwsw generation. They were measured on a 2-core Linux
 machine with kepler-formal built from source (commit 46113b2, naja 0.7.33).
 
-For the fix, the counterexample trace goes through the `iob_rvalid` register,
-which is the register the commit changed. A counterexample is the expected
-outcome here: it shows that the fix did change observable behavior, and where.
+A counterexample is the expected outcome for the fix: it shows that the commit
+changed observable behavior, and how. The 9-cycle trace, with the clock enable
+on throughout:
+
+| Cycle | Inputs | Before the fix | After the fix |
+| --- | --- | --- | --- |
+| 4 | The IOb side returns read data (`iob_rvalid_i=1`) | | |
+| 5 | The AXI master accepts the read response (`s_axi_rready_i=1`) | `s_axi_rvalid_o=1` | `s_axi_rvalid_o=1` |
+| 6 to 8 | No new IOb request (`iob_valid_o=0`), no new IOb response | | |
+| 8 | | `s_axi_rvalid_o=1`, `s_axi_rlast_o=1`, `s_axi_arready_o=1` | all 0 |
+
+Before the fix, the register that holds the IOb read response is enabled by
+`iob_rvalid_e` and never cleared (`rst_i` tied to 0), so the bridge presents a
+stale read response on AXI a second time. The fix enables it with
+`iob_rvalid_i` and clears it after the AXI handshake
+(`rst_i = m_axil_rvalid & m_axil_rready`). The trace goes through this
+`iob_rvalid` register. `replay_cex.sh` reproduces the difference in Icarus
+Verilog (see below).
 
 ## How the comparison is set up
 
@@ -53,6 +68,9 @@ Settings:
   bridge's registers get their initial value from this asynchronous reset.
   Without the bootstrap, kepler-formal reports "unsupported": it does not
   compare outputs that depend on state it cannot anchor to a known value.
+- **Clock enable (fix case):** `cke_i=0` is also given as a reset port. It is
+  held at 0 during the bootstrap and at 1 afterwards, so the counterexample
+  only uses cycles where the clock enable is on.
 - **Engines:** PDR (unbounded proof) for the cleanup; k-induction with
   max_k 8 for the fix, since a counterexample is found by the bounded search.
 - **Parameters:** default values, as instantiated by `py2hwsw setup`.
@@ -107,6 +125,12 @@ export PYTHON=$PWD/.venv/bin/python
 `sec_commit.sh` puts a no-op formatter on `PATH`, so generation only skips code
 formatting, which does not change the RTL.
 
+### Icarus Verilog (optional)
+
+`run_all.sh` replays the counterexample in Icarus Verilog when `iverilog` and
+`vvp` are on `PATH` (`apt-get install iverilog` or `brew install icarus-verilog`),
+and skips that step otherwise.
+
 ### Repository history
 
 The scripts need the two commits and their parents. A clone made with
@@ -134,11 +158,32 @@ Expected end of output:
    s_axi_arready_o[0]: design0=1, design1=0
    verdict: counterexample (exit 3)
    PASS: 2d734efb2 fix reported as a behavior change
+
+== replay in Icarus Verilog: iob_axi2iob 2d734efb2^ (design 1) vs 2d734efb2 (design 2)
+   cycle 8: s_axi_arready_o design1=1 design2=0, s_axi_rlast_o design1=1 design2=0, s_axi_rvalid_o design1=1 design2=0
+   PASS: counterexample confirmed in simulation
 ```
+
+kepler-formal reports the first output it finds different; the replay prints
+every output that differs.
 
 Generated trees and logs go to `keplertech/work/` (ignored by git). Each run
 writes the full kepler-formal log, including the complete counterexample trace,
 to `keplertech/work/<core>_<commit>/kepler-formal.log`.
+
+## Replaying a counterexample in simulation
+
+```bash
+keplertech/replay_cex.sh <core> <commit>
+```
+
+After a `sec_commit.sh` run that ends with a counterexample, this script turns
+the trace from `kepler-formal.log` into a testbench, simulates both generated
+versions with Icarus Verilog, and prints the outputs that differ, cycle by
+cycle. It applies the same reset bootstrap; inputs that the trace does not list
+are driven to 0. The testbench and transcripts are written to
+`keplertech/work/<core>_<commit>/replay/`, so the same sequence can be run in
+any other simulator.
 
 ## Checking another core or commit
 
@@ -147,9 +192,10 @@ keplertech/sec_commit.sh <core> <commit> [engine] [max_k]
 ```
 
 `engine` is `pdr` (default), `k_induction` or `imc`; `max_k` defaults to 32.
-`RESET_PORT` (default `arst_i=1`) and `RESET_CYCLES` (default 4) set the reset
-bootstrap. The exit code is kepler-formal's SEC exit code: 0 proved, 1 partially
-proved, 2 inconclusive, 3 counterexample.
+`RESET_PORTS` (default `"arst_i=1"`, space-separated `<port>=<active value>`
+pairs) and `RESET_CYCLES` (default 4) set the reset bootstrap; use the same
+values for `replay_cex.sh`. The exit code is kepler-formal's SEC exit code:
+0 proved, 1 partially proved, 2 inconclusive, 3 counterexample.
 
 Requirements on the two versions:
 

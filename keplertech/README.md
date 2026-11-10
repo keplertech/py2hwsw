@@ -47,6 +47,28 @@ stale read response on AXI a second time. The fix enables it with
 `iob_rvalid` register. `replay_cex.sh` reproduces the difference in Icarus
 Verilog (see below).
 
+### Other cores
+
+The same flow, run by `run_all.sh` on three more cores:
+
+| Core | Commit | Change | Intended effect | Verdict | Checked outputs |
+| --- | --- | --- | --- | --- | --- |
+| iob_iob2axil | 3bd965677 (2025-04-28) | Send `iob_ready` at once when `axil_arready` is high | Behavior change | **Counterexample**: `iob_ready_o` is 0 before the fix and 1 after it, at cycle 1 after reset | 93/93 |
+| iob_iob2wishbone | 682144278 (2025-08-28) | Delay `iob_rvalid` by one cycle, as the IOb protocol requires | Behavior change | **Counterexample**: `iob_rvalid_o` is 1 before the fix and 0 after it, at cycle 1 after reset | 105/105 |
+| iob_prio_enc | e0434c789 (2025-01-17) | Quartus warning cleanup | Behavior unchanged | **Proved equivalent** (default parameters) | 5/5 |
+
+Each run takes a few seconds, generation included. Two notes:
+
+- At 3bd965677, `py2hwsw iob_iob2axil setup` does not generate the `iob_reg_ca`
+  submodule that the core instantiates. Each side takes `iob_reg_ca` from the
+  setup of `iob_timer` at its own commit (`EXTRA_MODULES`, below).
+- `iob_prio_enc` is combinational and has no reset port, so it runs without a
+  reset bootstrap (`RESET_PORTS=""`).
+
+`iob_axi_ram`, also changed by e0434c789, gave no verdict: with default
+parameters its memory holds 16K words, and the run exceeded the memory of the
+2-core test machine.
+
 ## How the comparison is set up
 
 For each commit `C`, `sec_commit.sh`:
@@ -159,6 +181,23 @@ Expected end of output:
    verdict: counterexample (exit 3)
    PASS: 2d734efb2 fix reported as a behavior change
 
+== iob_iob2axil: 3bd965677^ (design 1) vs 3bd965677 (design 2)
+   ...
+   iob_ready_o[0]: design0=0, design1=1
+   verdict: counterexample (exit 3)
+   PASS: 3bd965677 iob2axil fix reported as a behavior change
+
+== iob_iob2wishbone: 682144278^ (design 1) vs 682144278 (design 2)
+   ...
+   iob_rvalid_o[0]: design0=1, design1=0
+   verdict: counterexample (exit 3)
+   PASS: 682144278 iob2wishbone fix reported as a behavior change
+
+== iob_prio_enc: e0434c789^ (design 1) vs e0434c789 (design 2)
+   ...
+   verdict: proved (exit 0)
+   PASS: e0434c789 prio_enc cleanup proved equivalent
+
 == replay in Icarus Verilog: iob_axi2iob 2d734efb2^ (design 1) vs 2d734efb2 (design 2)
    cycle 8: s_axi_arready_o design1=1 design2=0, s_axi_rlast_o design1=1 design2=0, s_axi_rvalid_o design1=1 design2=0
    PASS: counterexample confirmed in simulation
@@ -193,8 +232,11 @@ keplertech/sec_commit.sh <core> <commit> [engine] [max_k]
 
 `engine` is `pdr` (default), `k_induction` or `imc`; `max_k` defaults to 32.
 `RESET_PORTS` (default `"arst_i=1"`, space-separated `<port>=<active value>`
-pairs) and `RESET_CYCLES` (default 4) set the reset bootstrap; use the same
-values for `replay_cex.sh`. The exit code is kepler-formal's SEC exit code:
+pairs; `""` for a core without a reset port) and `RESET_CYCLES` (default 4) set
+the reset bootstrap; use the same values for `replay_cex.sh`.
+`EXTRA_MODULES` (space-separated `<module>:<core>` pairs) provides a submodule
+that the core instantiates but its setup does not generate: `<core>` is set up
+on each side's own commit and `<module>.v` is copied in. The exit code is kepler-formal's SEC exit code:
 0 proved, 1 partially proved, 2 inconclusive, 3 counterexample.
 
 Requirements on the two versions:

@@ -41,7 +41,18 @@ check 0 "e0434c789 cleanup proved equivalent" iob_axi2iob e0434c789 pdr
 export RESET_PORTS="arst_i=1 cke_i=0"
 check 3 "2d734efb2 fix reported as a behavior change" iob_axi2iob 2d734efb2 k_induction 8
 
-# 3. Replay that counterexample in Icarus Verilog, when it is installed.
+# 3. Two more bus bridge fixes, each a behavior change: expect counterexamples.
+#    At 3bd965677, iob_iob2axil setup does not generate the iob_reg_ca it
+#    instantiates; each side takes it from iob_timer at its own commit.
+EXTRA_MODULES="iob_reg_ca:iob_timer" \
+    check 3 "3bd965677 iob2axil fix reported as a behavior change" iob_iob2axil 3bd965677 k_induction 8
+check 3 "682144278 iob2wishbone fix reported as a behavior change" iob_iob2wishbone 682144278 k_induction 8
+
+# 4. The same warning cleanup on iob_prio_enc, a combinational core without a
+#    reset port: expect a proof.
+RESET_PORTS="" check 0 "e0434c789 prio_enc cleanup proved equivalent" iob_prio_enc e0434c789 pdr
+
+# 5. Replay the iob_axi2iob counterexample in Icarus Verilog, when it is installed.
 if command -v iverilog >/dev/null 2>&1 && command -v vvp >/dev/null 2>&1; then
     if "$HERE/replay_cex.sh" iob_axi2iob 2d734efb2; then
         echo "   PASS: counterexample confirmed in simulation"
